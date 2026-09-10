@@ -1,0 +1,75 @@
+# VulnLake Python project definition.
+#
+# This file defines how the project is packaged, which runtime dependencies
+# it requires, and which tools are required only during development.
+
+[build-system]
+# Setuptools is responsible for turning the source tree into an installable
+# Python package.
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "vulnlake"
+version = "0.1.0"
+description = "A vulnerability intelligence lakehouse built for reproducible security analytics."
+readme = "README.md"
+
+# VulnLake is currently developed and tested using modern Python.
+requires-python = ">=3.12"
+
+# Runtime dependencies are libraries required when VulnLake itself runs.
+dependencies = [
+    "httpx==0.28.1",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+]
+
+
+[project.optional-dependencies]
+# Development dependencies are required for testing and code-quality checks,
+# but are not fundamental runtime requirements for the application.
+dev = [
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.6",
+]
+
+
+[project.scripts]
+# Installing VulnLake creates a command called `vulnlake`.
+#
+# This maps:
+# vulnlake
+#
+# to:
+# vulnlake.cli:main
+vulnlake = "vulnlake.cli:main"
+
+
+[tool.setuptools]
+# VulnLake uses the professional "src layout".
+#
+# Python packages are stored below src/ rather than directly in the
+# repository root.
+package-dir = {"" = "src"}
+
+
+[tool.setuptools.packages.find]
+# Tell setuptools where it should search for Python packages.
+where = ["src"]
+
+
+[tool.pytest.ini_options]
+# pytest should discover tests only below the tests directory.
+testpaths = ["tests"]
+
+
+[tool.ruff]
+# Keep formatting expectations consistent across the repository.
+line-length = 88
+
+# We target Python 3.12 syntax as our minimum supported baseline,
+# even though development currently runs on Python 3.14.
+target-version = "py312"

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Environment configuration
+.env
+
+# macOS
+.DS_Store
+
+# Runtime data lake contents
+data/bronze/*
+data/silver/*
+data/gold/*
+
+# Preserve empty repository structure
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+# Python package metadata generated during local installation
+*.egg-info/
+build/
+dist/
+
+# Local IDE workspace configuration
+.vscode/
