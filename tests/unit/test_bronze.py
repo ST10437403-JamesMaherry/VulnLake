@@ -38,3 +38,25 @@ def test_identical_payload_does_not_create_duplicate_snapshot(
     snapshots = list((tmp_path / "bronze" / "cisa_kev" / "snapshots").glob("*.json"))
 
     assert len(snapshots) == 1
+
+
+def test_bronze_store_preserves_source_file_suffix(
+    tmp_path: Path,
+) -> None:
+    """Bronze should retain the original source representation's suffix."""
+
+    store = BronzeStore(tmp_path / "bronze")
+
+    payload = b"compressed-source-placeholder"
+    checksum = sha256_bytes(payload)
+
+    snapshot_path, was_created = store.persist_snapshot(
+        source="epss",
+        checksum=checksum,
+        payload=payload,
+        suffix=".csv.gz",
+    )
+
+    assert was_created is True
+    assert snapshot_path.name == f"{checksum}.csv.gz"
+    assert snapshot_path.read_bytes() == payload

@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-import httpx
 from pydantic import BaseModel, Field, ValidationError
 
 from vulnlake.config import Settings
+from vulnlake.ingestion.http import SourceHttpClient
 from vulnlake.models.source_run import RunStatus, SourceRun
 from vulnlake.storage.bronze import BronzeStore
 from vulnlake.utils.hashing import sha256_bytes
@@ -28,27 +28,22 @@ class CisaKevCatalog(BaseModel):
 
 
 class CisaKevClient:
-    """HTTP client and source validator for the CISA KEV feed."""
+    """Source adapter for the CISA KEV feed."""
 
-    def __init__(self, url: str, timeout_seconds: float = 30.0) -> None:
-        """Initialize the CISA adapter."""
+    def __init__(
+        self,
+        url: str,
+        http_client: SourceHttpClient,
+    ) -> None:
+        """Initialize the CISA adapter using shared HTTP infrastructure."""
 
         self.url = url
-        self.timeout_seconds = timeout_seconds
+        self.http_client = http_client
 
     def fetch(self) -> bytes:
         """Retrieve the exact raw CISA KEV payload."""
 
-        with httpx.Client(
-            timeout=self.timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            response = client.get(self.url)
-
-            # Any non-success response should stop ingestion immediately.
-            response.raise_for_status()
-
-            return response.content
+        return self.http_client.get_bytes(self.url)
 
     @staticmethod
     def parse(payload: bytes) -> CisaKevCatalog:
@@ -70,13 +65,11 @@ class CisaKevClient:
                 "CISA KEV payload does not match the expected source contract."
             ) from exc
 
-        # The catalogue's declared count should match the records delivered.
         if catalog.count != len(catalog.vulnerabilities):
             raise ValueError(
                 "CISA KEV record count does not match vulnerabilities array."
             )
 
-        # Every KEV record must identify the vulnerability it represents.
         for vulnerability in catalog.vulnerabilities:
             cve_id = vulnerability.get("cveID")
 
@@ -103,10 +96,16 @@ def ingest_cisa_kev(settings: Settings) -> SourceRun:
     # recorded as pipeline-run metadata.
     bronze_store = BronzeStore(settings.bronze_dir)
 
-    # Configure the source-specific HTTP adapter.
+    # All public-source adapters share the same bounded HTTP behaviour.
+    http_client = SourceHttpClient(
+        timeout_seconds=settings.request_timeout_seconds,
+        max_attempts=settings.http_max_attempts,
+        backoff_base_seconds=settings.http_backoff_base_seconds,
+    )
+
     client = CisaKevClient(
         url=settings.cisa_kev_url,
-        timeout_seconds=settings.request_timeout_seconds,
+        http_client=http_client,
     )
 
     # These values begin empty because an HTTP or parsing failure may occur
@@ -145,7 +144,7 @@ def ingest_cisa_kev(settings: Settings) -> SourceRun:
             checksum=checksum,
             schema_version=schema_version,
             status=status,
-            catalog_version=catalog.catalog_version,
+            source_version=catalog.catalog_version,
             source_released_at=catalog.date_released,
             snapshot_path=str(snapshot_path),
             message=(

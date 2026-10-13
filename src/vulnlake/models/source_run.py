@@ -15,35 +15,46 @@ class RunStatus(StrEnum):
 
 
 class SourceRun(BaseModel):
-    """Metadata describing one execution of a source ingestion pipeline."""
+    """Describe one execution of an external-source ingestion pipeline.
+
+    SourceRun is intentionally source-agnostic. CISA, EPSS, OSV and future
+    adapters should expose their publisher-specific version information
+    through the normalized ``source_version`` field.
+    """
 
     # Unique identifier for this individual pipeline execution.
     run_id: str
 
-    # Logical source identifier such as "cisa_kev".
+    # Logical VulnLake source identifier, for example ``cisa_kev``.
     source: str
 
-    # UTC timestamp at which VulnLake retrieved the source.
+    # UTC timestamp at which VulnLake started retrieving the source.
     fetched_at: datetime
 
-    # Number of source records found in the payload.
+    # Number of source records accepted by the source-contract validator.
     record_count: int
 
-    # SHA-256 digest of the exact raw source bytes.
+    # SHA-256 digest of the exact original source bytes.
     checksum: str | None
 
-    # VulnLake's expected source-contract version.
+    # Version of VulnLake's expected contract for this source.
     schema_version: str
 
-    # Outcome of this ingestion attempt.
+    # Final outcome of the ingestion execution.
     status: RunStatus
 
-    # Source-specific release/version metadata.
-    catalog_version: str | None = None
+    # Publisher-specific version mapped into one normalized field.
+    # Examples:
+    # - CISA catalog version
+    # - EPSS model version
+    source_version: str | None = None
+
+    # Timestamp supplied by the source describing when its dataset was
+    # released, generated or published.
     source_released_at: datetime | None = None
 
-    # Relative or absolute location of the persisted snapshot.
+    # Persisted immutable Bronze snapshot location.
     snapshot_path: str | None = None
 
-    # Optional operational context for failures/skips.
+    # Human-readable operational context for success, duplicate or failure.
     message: str | None = None
