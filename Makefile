@@ -1,4 +1,4 @@
-.PHONY: test lint ingest-cisa
+.PHONY: test lint ingest-cisa ingest-epss
 
 # Run the deterministic VulnLake test suite.
 test:
@@ -11,3 +11,7 @@ lint:
 # Retrieve the live CISA KEV dataset and persist it to Bronze.
 ingest-cisa:
 	.venv/bin/python -m vulnlake.cli ingest-cisa
+
+# Retrieve the live FIRST EPSS bulk score set and persist it to Bronze.
+ingest-epss:
+	.venv/bin/python -m vulnlake.cli ingest-epss
