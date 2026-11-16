@@ -11,27 +11,58 @@ class BronzeStore:
     """Persist immutable raw snapshots and ingestion-run metadata."""
 
     def __init__(self, bronze_root: Path) -> None:
-        """Initialize the Bronze store."""
+        """Initialize the Bronze store at the supplied lake path."""
 
         self.bronze_root = bronze_root
 
-    def snapshot_path(self, source: str, checksum: str) -> Path:
+    @staticmethod
+    def _normalize_suffix(suffix: str) -> str:
+        """Validate and normalize a snapshot filename suffix.
+
+        Examples:
+            ``json`` becomes ``.json``
+            ``.csv.gz`` remains ``.csv.gz``
+
+        Path separators are rejected because callers should supply only a
+        file-format suffix, never a path.
+        """
+
+        if not suffix:
+            raise ValueError("Snapshot suffix must not be empty.")
+
+        if "/" in suffix or "\\" in suffix:
+            raise ValueError("Snapshot suffix must not contain path separators.")
+
+        return suffix if suffix.startswith(".") else f".{suffix}"
+
+    def snapshot_path(
+        self,
+        source: str,
+        checksum: str,
+        suffix: str = ".json",
+    ) -> Path:
         """Return the content-addressed path for a raw source snapshot."""
 
-        return self.bronze_root / source / "snapshots" / f"{checksum}.json"
+        normalized_suffix = self._normalize_suffix(suffix)
+
+        return (
+            self.bronze_root / source / "snapshots" / f"{checksum}{normalized_suffix}"
+        )
 
     def run_metadata_path(self, source: str, run_id: str) -> Path:
-        """Return the metadata path for an ingestion run."""
+        """Return the JSON metadata path for one ingestion run."""
 
         return self.bronze_root / "_runs" / source / f"{run_id}.json"
 
     @staticmethod
     def _atomic_write(path: Path, content: bytes) -> None:
-        """Write content atomically using a temporary file then replacement.
+        """Write content atomically using a temporary file and replacement.
 
-        Writing to a temporary file first prevents a partially written
-        Bronze object from appearing as a valid snapshot if the process
-        fails during the write.
+        The temporary file is created in the destination directory so the
+        final ``os.replace`` occurs on the same filesystem.
+
+        A partially written source file is therefore never exposed as a valid
+        Bronze snapshot.
         """
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,18 +82,39 @@ class BronzeStore:
         source: str,
         checksum: str,
         payload: bytes,
+        suffix: str = ".json",
     ) -> tuple[Path, bool]:
-        """Persist a raw snapshot unless that exact content already exists.
+        """Persist exact source bytes unless that content already exists.
+
+        Args:
+            source:
+                Logical source identifier such as ``cisa_kev`` or ``epss``.
+
+            checksum:
+                SHA-256 digest calculated from the original source bytes.
+
+            payload:
+                Exact raw bytes received from the external source.
+
+            suffix:
+                File-format suffix retained by Bronze. Examples include
+                ``.json`` and ``.csv.gz``.
 
         Returns:
             A tuple containing:
-            - snapshot path
-            - True if a new file was created, otherwise False
+            - the immutable snapshot path
+            - True when a new snapshot was created
+            - False when identical content already existed
         """
 
-        path = self.snapshot_path(source, checksum)
+        path = self.snapshot_path(
+            source=source,
+            checksum=checksum,
+            suffix=suffix,
+        )
 
-        # Content-addressed storage provides natural idempotency.
+        # Content-addressed persistence makes duplicate source snapshots a
+        # no-op while leaving pipeline-run history independent.
         if path.exists():
             return path, False
 
@@ -71,11 +123,11 @@ class BronzeStore:
         return path, True
 
     def persist_run_metadata(self, run: SourceRun) -> Path:
-        """Persist metadata for every pipeline execution."""
+        """Persist operational metadata for every ingestion execution."""
 
         path = self.run_metadata_path(run.source, run.run_id)
 
-        # Serialize through Pydantic to keep datetime formatting consistent.
+        # Pydantic provides consistent ISO-8601 datetime serialization.
         content = run.model_dump_json(indent=2).encode("utf-8")
 
         self._atomic_write(path, content)
